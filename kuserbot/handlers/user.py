@@ -154,7 +154,7 @@ async def cmd_start(message: Message) -> None:
             await db.add_user(user_id, full_name, username)
         else:
             # Only update username as per your DB schema
-            await db.update_user(user_id, username)
+            await db.update_user(user_id, username=username)
     except Exception:
         logger.exception("DB error while registering user %s", user_id)
 
