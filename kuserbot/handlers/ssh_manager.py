@@ -364,4 +364,4 @@ async def ssh_delete(callback: CallbackQuery):
 # ---------------------------------------------------------------------------
 @router.message(F.text == "/ssh", IsAdmin())
 async def cmd_ssh(message: Message):
-    await _show_dashboard(message, edit=False)s
+    await _show_dashboard(message, edit=False)
