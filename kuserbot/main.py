@@ -66,6 +66,7 @@ from database import db
 # ──────────────────────────────────────────────────────────────────────────
 BOT_VERSION: str = "3.0.0"
 BOT_NAME: str = "PHANTOM-X"
+logger = logging.getLogger("phantom_bot")
 
 # ──────────────────────────────────────────────────────────────────────────
 #  ANSI Colour Codes — for premium console output
