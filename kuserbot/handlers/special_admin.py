@@ -12,6 +12,7 @@ import os
 import re
 import logging
 import random
+from aiogram.filters import BaseFilter
 from typing import Union, Any
 
 from aiogram import Router, F
