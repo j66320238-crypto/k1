@@ -439,52 +439,30 @@ async def cmd_cancel_host(message: Message, state: FSMContext) -> None:
 #  HOST FLOW — PHONE NUMBER HANDLER
 # ════════════════════════════════════════════════════════════════════
 
+# --- Phone Number Handler ---
 @router.message(HostStates.waiting_for_phone, F.text)
-async def process_phone(message: Message, state: FSMContext) -> None:
-    phone_number = (message.text or "").strip()
-
+async def process_phone(message: Message, state: FSMContext):
+    phone_number = message.text.strip()
     if not phone_number.startswith("+"):
-        await message.reply(
-            "❌ Invalid format. Please send in international format "
-            "(e.g., <code>+919876543210</code>).",
-            parse_mode="HTML",
-        )
+        await message.reply("❌ Invalid format. Please send in international format (e.g., +919876543210).")
         return
 
-    # ── Telethon Client Setup ─────────────────────────────
-    client = TelegramClient(
-        f"sessions/temp_{message.from_user.id}", API_ID, API_HASH
-    )
+    # Telethon Client Setup (Using StringSession to avoid file system errors)
+    from telethon.sessions import StringSession
+    client = TelegramClient(StringSession(), API_ID, API_HASH)
     await client.connect()
 
     try:
         await client.send_code_request(phone_number)
-
-        # Save client session and phone in FSM state
-        await state.update_data(
-            phone=phone_number,
-            client_session=client.session.save(),
-        )
+        await state.update_data(phone=phone_number, client_session=client.session.save())
         await state.set_state(HostStates.waiting_for_otp)
-
         await message.reply(
-            "✅ <b>OTP sent to your Telegram app!</b>\n\n"
-            "Please send the OTP code now (e.g., <code>12345</code>).\n\n"
-            "❌ Send <code>/cancel</code> to abort.",
-            parse_mode="HTML",
-        )
-    except PhoneNumberInvalidError:
-        await message.reply(
-            "❌ <b>Invalid phone number.</b> Please try again or send "
-            "<code>/cancel</code>.",
-            parse_mode="HTML",
+            "✅ OTP sent to your Telegram app!\n\n"
+            "Please send the OTP code now (e.g., 12345).\n\n"
+            "❌ Send /cancel to abort."
         )
     except Exception as e:
-        logger.exception("Telethon send_code_request failed for %s",
-                         message.from_user.id)
-        await message.reply(f"❌ <b>Error:</b> <code>{str(e)}</code>",
-                            parse_mode="HTML")
-    finally:
+        await message.reply(f"❌ Error: {str(e)}")
         await client.disconnect()
 
 
