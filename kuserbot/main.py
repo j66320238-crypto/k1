@@ -175,7 +175,7 @@ def register_routers(dp: Dispatcher, logger: logging.Logger) -> None:
 # ──────────────────────────────────────────────────────────────────────────
 #  Lifecycle — Startup
 # ──────────────────────────────────────────────────────────────────────────
-async def on_startup(bot: Bot, dp: Dispatcher, logger: logging.Logger) -> None:
+async def on_startup(bot: Bot) -> None:
     try:
         await db.init()
         logger.info(f"{C.GRN}✓ Database initialised successfully.{C.R}")
@@ -223,7 +223,7 @@ async def on_startup(bot: Bot, dp: Dispatcher, logger: logging.Logger) -> None:
 # ──────────────────────────────────────────────────────────────────────────
 #  Lifecycle — Shutdown
 # ──────────────────────────────────────────────────────────────────────────
-async def on_shutdown(bot: Bot, logger: logging.Logger) -> None:
+async def on_shutdown(bot: Bot) -> None:
     logger.info(f"{C.YEL}⟳ Initiating graceful shutdown…{C.R}")
 
     try:
