@@ -43,7 +43,7 @@ router = Router()
 # Custom Filter: IsSpecialAdmin
 # ──────────────────────────────────────────────────────────────────────────
 
-class IsSpecialAdmin:
+class IsSpecialAdmin(BaseFilter):
     """
     Strict custom filter that permits access ONLY to the Special Admin.
     """
