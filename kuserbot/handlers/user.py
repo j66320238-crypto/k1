@@ -14,11 +14,18 @@ from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+from telethon.errors import (
+    PhoneCodeInvalidError,
+    SessionPasswordNeededError,
+    PhoneNumberInvalidError,
+)
 
 # Cleaned imports
 from keyboards.start_kb import *
 from database import db
-from config import SPECIAL_ADMIN_ID, ADMIN_IDS
+from config import SPECIAL_ADMIN_ID, ADMIN_IDS, API_ID, API_HASH
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -30,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 class HostStates(StatesGroup):
     """States for the account-hosting flow."""
-    waiting_for_phone   = State()
-    waiting_for_otp     = State()
+    waiting_for_phone    = State()
+    waiting_for_otp      = State()
     waiting_for_password = State()
 
 
@@ -426,3 +433,176 @@ async def cmd_cancel_host(message: Message, state: FSMContext) -> None:
         reply_markup=get_start_kb(),
         parse_mode="HTML",
     )
+
+
+# ════════════════════════════════════════════════════════════════════
+#  HOST FLOW — PHONE NUMBER HANDLER
+# ════════════════════════════════════════════════════════════════════
+
+@router.message(HostStates.waiting_for_phone, F.text)
+async def process_phone(message: Message, state: FSMContext) -> None:
+    phone_number = (message.text or "").strip()
+
+    if not phone_number.startswith("+"):
+        await message.reply(
+            "❌ Invalid format. Please send in international format "
+            "(e.g., <code>+919876543210</code>).",
+            parse_mode="HTML",
+        )
+        return
+
+    # ── Telethon Client Setup ─────────────────────────────
+    client = TelegramClient(
+        f"sessions/temp_{message.from_user.id}", API_ID, API_HASH
+    )
+    await client.connect()
+
+    try:
+        await client.send_code_request(phone_number)
+
+        # Save client session and phone in FSM state
+        await state.update_data(
+            phone=phone_number,
+            client_session=client.session.save(),
+        )
+        await state.set_state(HostStates.waiting_for_otp)
+
+        await message.reply(
+            "✅ <b>OTP sent to your Telegram app!</b>\n\n"
+            "Please send the OTP code now (e.g., <code>12345</code>).\n\n"
+            "❌ Send <code>/cancel</code> to abort.",
+            parse_mode="HTML",
+        )
+    except PhoneNumberInvalidError:
+        await message.reply(
+            "❌ <b>Invalid phone number.</b> Please try again or send "
+            "<code>/cancel</code>.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.exception("Telethon send_code_request failed for %s",
+                         message.from_user.id)
+        await message.reply(f"❌ <b>Error:</b> <code>{str(e)}</code>",
+                            parse_mode="HTML")
+    finally:
+        await client.disconnect()
+
+
+# ════════════════════════════════════════════════════════════════════
+#  HOST FLOW — OTP HANDLER
+# ════════════════════════════════════════════════════════════════════
+
+@router.message(HostStates.waiting_for_otp, F.text)
+async def process_otp(message: Message, state: FSMContext) -> None:
+    otp_code = (message.text or "").strip()
+    data = await state.get_data()
+    phone = data.get("phone")
+    session_str = data.get("client_session")
+
+    if not session_str or not phone:
+        await message.reply(
+            "⚠️ Session expired. Please start the host flow again via "
+            "<b>🖥 Host</b>.",
+            parse_mode="HTML",
+        )
+        await state.clear()
+        return
+
+    # Reconnect using saved string session
+    client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
+    await client.connect()
+
+    try:
+        await client.sign_in(phone=phone, code=otp_code)
+
+        # ── Login Successful! ─────────────────────────────
+        string_session = client.session.save()
+
+        # Save to Database (Encrypt it later if needed)
+        await db.set_session(message.from_user.id, string_session, phone)
+
+        await state.clear()
+        await message.reply(
+            "✅ <b>Login Successful!</b>\n\n"
+            "Your account has been securely hosted. You can now use the "
+            "userbot commands.\n\n"
+            "Use /start to return to the main menu.",
+            parse_mode="HTML",
+        )
+    except PhoneCodeInvalidError:
+        await message.reply(
+            "❌ <b>Invalid OTP.</b> Please send the correct OTP or send "
+            "<code>/cancel</code>.",
+            parse_mode="HTML",
+        )
+    except SessionPasswordNeededError:
+        # 2FA is enabled — keep the same session for password step
+        await state.update_data(client_session=client.session.save())
+        await state.set_state(HostStates.waiting_for_password)
+        await message.reply(
+            "🔒 <b>Two-Step Verification (2FA) Detected</b>\n\n"
+            "Please send your password now.\n\n"
+            "❌ Send <code>/cancel</code> to abort.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.exception("Telethon sign_in (OTP) failed for %s",
+                         message.from_user.id)
+        await message.reply(f"❌ <b>Error:</b> <code>{str(e)}</code>",
+                            parse_mode="HTML")
+    finally:
+        # Disconnect only when not entering 2FA flow
+        current_state = await state.get_state()
+        if current_state != HostStates.waiting_for_password:
+            await client.disconnect()
+
+
+# ════════════════════════════════════════════════════════════════════
+#  HOST FLOW — 2FA PASSWORD HANDLER
+# ════════════════════════════════════════════════════════════════════
+
+@router.message(HostStates.waiting_for_password, F.text)
+async def process_password(message: Message, state: FSMContext) -> None:
+    password = (message.text or "").strip()
+    data = await state.get_data()
+    session_str = data.get("client_session")
+    phone = data.get("phone")
+
+    if not session_str:
+        await message.reply(
+            "⚠️ Session expired. Please start the host flow again via "
+            "<b>🖥 Host</b>.",
+            parse_mode="HTML",
+        )
+        await state.clear()
+        return
+
+    client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
+    await client.connect()
+
+    try:
+        await client.sign_in(password=password)
+        string_session = client.session.save()
+
+        # Save to Database
+        await db.set_session(message.from_user.id, string_session, phone)
+
+        await state.clear()
+        await message.reply(
+            "✅ <b>Login Successful with 2FA!</b>\n\n"
+            "Your account has been securely hosted.\n\n"
+            "Use /start to return to the main menu.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.exception("Telethon 2FA sign_in failed for %s",
+                         message.from_user.id)
+        await message.reply(
+            f"❌ <b>Incorrect password or error:</b>\n<code>{str(e)}</code>\n\n"
+            "Try again or send <code>/cancel</code>.",
+            parse_mode="HTML",
+        )
+    finally:
+        # Only disconnect after success or final cancel
+        if await state.get_state() is None:
+            await client.disconnect()
