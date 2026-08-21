@@ -1,0 +1,28 @@
+# systemd unit for the PHANTOM-X master bot (server auto-restart).
+#
+# Install:
+#   sudo cp phantom-x.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now phantom-x
+#
+# Logs:
+#   journalctl -u phantom-x -f
+
+[Unit]
+Description=PHANTOM-X Telegram Master Bot (Aiogram v3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# EDIT: point to your deployment folder & python
+WorkingDirectory=/opt/phantom-x
+ExecStart=/opt/phantom-x/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+# Hardening (optional)
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

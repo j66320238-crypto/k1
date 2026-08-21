@@ -26,7 +26,9 @@ from telethon.tl.functions.contacts import BlockRequest
 #  Persistence helpers  (module-level, no client dependency → no circular import)
 # ---------------------------------------------------------------------------
 
-DATA_FILE = "antipm_data.json"
+DATA_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "antipm_data.json"
+)
 
 _DEFAULT_DATA = {
     "enabled": False,
@@ -111,7 +113,7 @@ def register(client):
     # ==================================================================
 
     # ---- .pmguard on | off ----
-    @client.on(events.NewMessage(pattern=r"^\.pmguard(?:\s+(on|off))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.pmguard(?:\s+(on|off))?$"))
     @client.flood_safe
     async def pmguard_toggle(event):
         if not event.is_private:
@@ -138,7 +140,7 @@ def register(client):
             pass
 
     # ---- .setpmmsg <text> ----
-    @client.on(events.NewMessage(pattern=r"^\.setpmmsg(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.setpmmsg(?:\s+(.*))?$"))
     @client.flood_safe
     async def set_pmmsg(event):
         if not event.is_private:
@@ -158,7 +160,7 @@ def register(client):
             pass
 
     # ---- .setblockmsg <text> ----
-    @client.on(events.NewMessage(pattern=r"^\.setblockmsg(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.setblockmsg(?:\s+(.*))?$"))
     @client.flood_safe
     async def set_blockmsg(event):
         if not event.is_private:
@@ -178,7 +180,7 @@ def register(client):
             pass
 
     # ---- .setlimit <number> ----
-    @client.on(events.NewMessage(pattern=r"^\.setlimit(?:\s+(\d+))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.setlimit(?:\s+(\d+))?$"))
     @client.flood_safe
     async def set_limit(event):
         if not event.is_private:
@@ -202,7 +204,7 @@ def register(client):
             pass
 
     # ---- .approve / .a  (reply-based) ----
-    @client.on(events.NewMessage(pattern=r"^\.(?:approve|a)(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(?:approve|a)(?:\s+(.*))?$"))
     @client.flood_safe
     async def approve_user(event):
         if not event.is_private:
@@ -242,7 +244,7 @@ def register(client):
             pass
 
     # ---- .disapprove / .d  (reply-based) ----
-    @client.on(events.NewMessage(pattern=r"^\.(?:disapprove|d)(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(?:disapprove|d)(?:\s+(.*))?$"))
     @client.flood_safe
     async def disapprove_user(event):
         if not event.is_private:
@@ -272,7 +274,7 @@ def register(client):
             pass
 
     # ---- .approved ----
-    @client.on(events.NewMessage(pattern=r"^\.approved$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.approved$"))
     @client.flood_safe
     async def list_approved(event):
         if not event.is_private:
@@ -352,8 +354,10 @@ def register(client):
                     pass
 
                 try:
-                    # Fixed Telethon Syntax: get_input_entity() returns the correct type
-                    await event.client(BlockRequest(id=await event.get_input_entity()))
+                    # FIX: block the *sender* — events have no
+                    # get_input_entity(); `sender` is already the
+                    # resolved InputPeer from above.
+                    await event.client(BlockRequest(id=sender))
                 except Exception:
                     pass
 
@@ -379,3 +383,15 @@ def register(client):
         except Exception:
             # Never let the listener crash the client
             pass
+COMMANDS = {
+    "description": "PM Guard (Anti-PM)",
+    "commands": [
+        (".pmguard on|off", "toggle PM guard"),
+        (".setpmmsg <text>", "custom warning message"),
+        (".setblockmsg <text>", "custom block message"),
+        (".setlimit <n>", "messages allowed before block"),
+        (".approve / .a", "approve replied user"),
+        (".disapprove / .d", "disapprove replied user"),
+        (".approved", "list approved users"),
+    ],
+}

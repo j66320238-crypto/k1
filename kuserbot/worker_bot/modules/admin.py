@@ -10,7 +10,7 @@ Handles group administration commands:
     .del  .purge [n]
     .lock <type>  .unlock <type>
     .autodelete on|off|list
-    .admins  .info
+    .admins
     .warn <reason>  .warnings  .resetwarn
     .gban  .ungban
     .antiflood on <count> <sec> | off | status
@@ -191,7 +191,7 @@ def register(client):
         return (match or "").strip() or "No reason provided"
 
     # ════════════════════════════ .ban ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]ban(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]ban(?:\s+(.*))?$"))
     @client.flood_safe
     async def ban_handler(event):
         try:
@@ -207,7 +207,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .unban ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]unban(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]unban(?:\s+(.*))?$"))
     @client.flood_safe
     async def unban_handler(event):
         try:
@@ -221,7 +221,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .kick ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]kick(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]kick(?:\s+(.*))?$"))
     @client.flood_safe
     async def kick_handler(event):
         try:
@@ -240,7 +240,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .promote ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]promote(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]promote(?:\s+(.*))?$"))
     @client.flood_safe
     async def promote_handler(event):
         try:
@@ -255,7 +255,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .demote ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]demote$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]demote$"))
     @client.flood_safe
     async def demote_handler(event):
         try:
@@ -269,7 +269,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .mute <minutes> ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]mute(?:\s+(\d+))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]mute(?:\s+(\d+))?$"))
     @client.flood_safe
     async def mute_handler(event):
         try:
@@ -297,7 +297,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .unmute ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]unmute$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]unmute$"))
     @client.flood_safe
     async def unmute_handler(event):
         try:
@@ -311,7 +311,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .pin ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]pin(?:\s+(silent))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]pin(?:\s+(silent))?$"))
     @client.flood_safe
     async def pin_handler(event):
         try:
@@ -326,7 +326,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .unpin ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]unpin$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]unpin$"))
     @client.flood_safe
     async def unpin_handler(event):
         try:
@@ -340,7 +340,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .unpinall ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]unpinall$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]unpinall$"))
     @client.flood_safe
     async def unpinall_handler(event):
         try:
@@ -351,7 +351,7 @@ def register(client):
             await event.reply(_perm_msg(e))
 
     # ════════════════════════════ .del ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]del$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]del$"))
     @client.flood_safe
     async def del_handler(event):
         try:
@@ -366,7 +366,7 @@ def register(client):
             await event.reply(f"⚠️ Error: `{e}`")
 
     # ════════════════════════════ .purge [limit] ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]purge(?:\s+(\d+))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]purge(?:\s+(\d+))?$"))
     @client.flood_safe
     async def purge_handler(event):
         try:
@@ -395,7 +395,7 @@ def register(client):
             await event.reply(f"⚠️ Error: `{e}`")
 
     # ════════════════════════════ .lock <type> ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]lock(?:\s+(\w+))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]lock(?:\s+(\w+))?$"))
     @client.flood_safe
     async def lock_handler(event):
         try:
@@ -419,7 +419,7 @@ def register(client):
             await event.reply(f"⚠️ Error: `{e}`")
 
     # ════════════════════════════ .unlock <type> ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]unlock(?:\s+(\w+))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]unlock(?:\s+(\w+))?$"))
     @client.flood_safe
     async def unlock_handler(event):
         try:
@@ -524,7 +524,7 @@ def register(client):
             pass
 
     # ════════════════════════════ .admins ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]admins$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]admins$"))
     @client.flood_safe
     async def admins_handler(event):
         try:
@@ -540,31 +540,8 @@ def register(client):
         except Exception as e:
             await event.reply(f"⚠️ Error: `{e}`")
 
-    # ════════════════════════════ .info ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]info$"))
-    @client.flood_safe
-    async def info_handler(event):
-        try:
-            reply = await event.get_reply_message()
-            user = await reply.get_sender() if reply else await event.get_sender()
-            full = ""
-            if getattr(user, "last_name", ""):
-                full = f" {user.last_name}"
-            text = (
-                "👤 **User Info**\n"
-                f"• Name: {(user.first_name or '')}{full}\n"
-                f"• ID: `{user.id}`\n"
-                f"• Username: @{user.username if user.username else '—'}\n"
-                f"• Bot: `{user.bot}`\n"
-                f"• Deleted: `{user.deleted}`\n"
-                f"• Premium: `{getattr(user, 'premium', False)}`"
-            )
-            await event.reply(text)
-        except Exception as e:
-            await event.reply(f"⚠️ Error: `{e}`")
-
     # ════════════════════════════ .warn / .warnings / .resetwarn ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]warn(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]warn(?:\s+(.*))?$"))
     @client.flood_safe
     async def warn_handler(event):
         try:
@@ -596,7 +573,7 @@ def register(client):
         except Exception as e:
             await event.reply(f"⚠️ Error: `{e}`")
 
-    @client.on(events.NewMessage(pattern=r"^[\.!]warnings$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]warnings$"))
     @client.flood_safe
     async def warnings_handler(event):
         try:
@@ -613,7 +590,7 @@ def register(client):
         except Exception as e:
             await event.reply(f"⚠️ Error: `{e}`")
 
-    @client.on(events.NewMessage(pattern=r"^[\.!]resetwarn$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]resetwarn$"))
     @client.flood_safe
     async def resetwarn_handler(event):
         try:
@@ -630,7 +607,7 @@ def register(client):
             await event.reply(f"⚠️ Error: `{e}`")
 
     # ════════════════════════════ .gban / .ungban ════════════════════════════
-    @client.on(events.NewMessage(pattern=r"^[\.!]gban(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]gban(?:\s+(.*))?$"))
     @client.flood_safe
     async def gban_handler(event):
         try:
@@ -664,7 +641,7 @@ def register(client):
         except Exception as e:
             await event.reply(f"⚠️ Error: `{e}`")
 
-    @client.on(events.NewMessage(pattern=r"^[\.!]ungban$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^[\.!]ungban$"))
     @client.flood_safe
     async def ungban_handler(event):
         try:
@@ -769,3 +746,20 @@ def register(client):
 
     # Mark module as registered
     client._admin_module_loaded = True
+COMMANDS = {
+    "description": "Group Admin Tools",
+    "commands": [
+        (".ban [reason]", "ban replied user"), (".unban", "unban user"),
+        (".kick [reason]", "kick replied user"),
+        (".promote [title]", "promote to admin"), (".demote", "demote admin"),
+        (".mute [min]", "mute user"), (".unmute", "unmute user"),
+        (".pin / .unpin / .unpinall", "manage pins"),
+        (".del", "delete replied msg"), (".purge [n]", "mass delete"),
+        (".lock <type> / .unlock <type>", "chat locks"),
+        (".autodelete on|off|list", "auto-delete a user's msgs"),
+        (".admins", "list chat admins"),
+        (".warn / .warnings / .resetwarn", "warn system (3=ban)"),
+        (".gban / .ungban", "global ban across chats"),
+        (".antiflood on|off|status", "anti-flood mute"),
+    ],
+}

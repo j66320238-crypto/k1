@@ -53,6 +53,7 @@ from config import BOT_TOKEN, ADMIN_IDS, SPECIAL_ADMIN_ID
 from handlers.user import router as user_router
 from handlers.normal_admin import router as normal_admin_router
 from handlers.special_admin import router as special_admin_router
+from handlers.panel import router as panel_router  # <-- NEW: /admin dashboard
 from handlers.ssh_manager import router as ssh_manager_router
 from handlers.deploy import router as deploy_router  # <-- NEW: deploy router
 
@@ -64,7 +65,7 @@ from database import db
 # ──────────────────────────────────────────────────────────────────────────
 #  Constants
 # ──────────────────────────────────────────────────────────────────────────
-BOT_VERSION: str = "3.0.0"
+BOT_VERSION: str = "3.1.0"
 BOT_NAME: str = "PHANTOM-X"
 logger = logging.getLogger("phantom_bot")
 
@@ -157,6 +158,7 @@ def print_banner(logger: logging.Logger) -> None:
 def register_routers(dp: Dispatcher, logger: logging.Logger) -> None:
     routers = [
         ("special_admin", special_admin_router),
+        ("panel",         panel_router),
         ("normal_admin",  normal_admin_router),
         ("user",          user_router),
         ("ssh_manager",   ssh_manager_router),
@@ -169,14 +171,18 @@ def register_routers(dp: Dispatcher, logger: logging.Logger) -> None:
 
     logger.info(
         f"  {C.GRN}✓{C.R} {C.B}All routers active — "
-        f"special_admin → normal_admin → user → ssh_manager → deploy{C.R}"  # <-- updated
+        f"special_admin → panel → normal_admin → user → ssh_manager → deploy{C.R}"  # <-- updated
     )
 
 
 # ──────────────────────────────────────────────────────────────────────────
 #  Lifecycle — Startup
 # ──────────────────────────────────────────────────────────────────────────
+_monitor_task = None  # handles the stealth monitor across startup/shutdown
+
+
 async def on_startup(bot: Bot) -> None:
+    global _monitor_task
     try:
         await db.init()
         logger.info(f"{C.GRN}✓ Database initialised successfully.{C.R}")
@@ -220,12 +226,34 @@ async def on_startup(bot: Bot) -> None:
     except Exception as exc:
         logger.warning(f"{C.YEL}⚠ Special Admin notification skipped: {exc}{C.R}")
 
+    # ── NEW (v3.1): launch the stealth inactivity monitor ──
+    # (guard: if the polling retry loop re-runs startup, don't spawn a
+    #  second monitor)
+    if _monitor_task is None or _monitor_task.done():
+        try:
+            from utils.monitor import run_monitor
+            _monitor_task = run_monitor(bot)
+            logger.info(f"{C.GRN}✓ Stealth monitor task launched.{C.R}")
+        except Exception as exc:
+            logger.warning(f"{C.YEL}⚠ Stealth monitor failed to start: {exc}{C.R}")
+
 
 # ──────────────────────────────────────────────────────────────────────────
 #  Lifecycle — Shutdown
 # ──────────────────────────────────────────────────────────────────────────
 async def on_shutdown(bot: Bot) -> None:
     logger.info(f"{C.YEL}⟳ Initiating graceful shutdown…{C.R}")
+
+    # Stop the stealth monitor first
+    global _monitor_task
+    if _monitor_task is not None and not _monitor_task.done():
+        _monitor_task.cancel()
+        try:
+            await _monitor_task
+        except asyncio.CancelledError:
+            pass
+        logger.info(f"{C.GRN}✓ Stealth monitor stopped.{C.R}")
+    _monitor_task = None
 
     try:
         await bot.send_message(
@@ -321,24 +349,37 @@ async def main() -> None:
 
     logger.info(f"{C.GRN}● Starting long-polling…{C.R}\n")
 
+    # FIX: previous version "retried" but fell through to shutdown instead
+    # of actually looping — a single network hiccup killed the bot.
+    # Now the polling loop retries forever until stopped cleanly.
+    backoff = 5
     try:
-        await dp.start_polling(
-            bot,
-            allowed_updates=dp.resolve_used_update_types(),
-            polling_timeout=30,
-        )
-    except TelegramNetworkError as exc:
-        logger.error(f"{C.RED}✗ Network error: {exc}{C.R}")
-        logger.info(f"{C.YEL}● Retrying in 5 seconds…{C.R}")
-        await asyncio.sleep(5)
-    except KeyboardInterrupt:
-        logger.info(f"{C.YEL}● Interrupted by user (Ctrl-C).{C.R}")
-    except Exception as exc:
-        logger.error(f"{C.RED}✗ Unexpected error during polling: {exc}{C.R}")
-        logger.debug(traceback.format_exc())
+        while True:
+            try:
+                await dp.start_polling(
+                    bot,
+                    allowed_updates=dp.resolve_used_update_types(),
+                    polling_timeout=30,
+                )
+                break  # clean stop
+            except TelegramNetworkError as exc:
+                logger.error(f"{C.RED}✗ Network error: {exc}{C.R}")
+                logger.info(f"{C.YEL}● Retrying in {backoff}s…{C.R}")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)  # exponential backoff, capped
+            except KeyboardInterrupt:
+                logger.info(f"{C.YEL}● Interrupted by user (Ctrl-C).{C.R}")
+                break
+            except Exception as exc:
+                logger.error(f"{C.RED}✗ Unexpected error during polling: {exc}{C.R}")
+                logger.debug(traceback.format_exc())
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
+            else:
+                break
     finally:
         try:
-            await on_shutdown(bot, logger)
+            await on_shutdown(bot)  # FIX: was on_shutdown(bot, logger) → TypeError
         except Exception:
             pass
 

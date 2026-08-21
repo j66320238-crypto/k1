@@ -330,10 +330,16 @@ class SSHManager:
         Install Telethon and (optionally) ``worker_bot/requirements.txt``
         on the remote host via ``pip``.
         """
+        # python3 -m pip works even where the bare `pip` alias is absent;
+        # --user avoids permission errors on shared hosts (e.g. alwaysdata).
         cmd = (
-            "pip install --quiet --no-input telethon && "
+            "python3 -m pip install --quiet --no-input --user telethon tgcrypto || "
+            "python3 -m pip install --quiet --no-input telethon tgcrypto; "
             "if [ -f worker_bot/requirements.txt ]; then "
-            "  pip install --quiet --no-input -r worker_bot/requirements.txt; "
+            "  python3 -m pip install --quiet --no-input --user "
+            "    -r worker_bot/requirements.txt || "
+            "  python3 -m pip install --quiet --no-input "
+            "    -r worker_bot/requirements.txt; "
             "fi"
         )
         logger.info("Installing remote requirements on %s ...", self.host)
@@ -355,12 +361,16 @@ class SSHManager:
         captured, ``None`` otherwise.
         """
         # shlex.quote defends against shell injection through session_string.
+        # FIX: the old command ran `cd worker_bot && python -m worker_bot.userbot`
+        # — from *inside* worker_bot/ there is no `worker_bot` package, so the
+        # process died instantly with "No module named worker_bot".
+        # `python3 userbot.py` is a plain script run and always works.
         cmd = (
             "cd worker_bot && "
             f"export API_ID={shlex.quote(str(api_id))} "
             f"API_HASH={shlex.quote(api_hash)} "
             f"SESSION_STRING={shlex.quote(session_string)} && "
-            "nohup python -m worker_bot.userbot > userbot.log 2>&1 & "
+            "nohup python3 userbot.py > userbot.log 2>&1 & "
             "echo $!"
         )
         logger.info("Launching userbot on %s ...", self.host)
@@ -440,7 +450,7 @@ class SSHManager:
     async def kill_userbot(self) -> CommandResult:
         """Best-effort termination of any running userbot process."""
         return await self.execute_command(
-            "pkill -f 'python -m worker_bot.userbot' || true"
+            "pkill -f 'python3 userbot.py' || pkill -f 'worker_bot.userbot' || true"
         )
 
     async def tail_log(self, lines: int = 50) -> str:

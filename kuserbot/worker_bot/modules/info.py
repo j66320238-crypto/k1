@@ -120,12 +120,18 @@ def _format_card(user, full_user=None, detailed=False):
 
 
 async def _resolve_target(event):
-    """Return ``(target_input_entity, reply_msg)`` or ``(None, None)``."""
+    """Return ``(target_input_entity, reply_msg)`` or ``(None, None)``.
+
+    FIX: ``Message`` objects have no ``get_input_entity()`` method in
+    Telethon — that call always raised AttributeError and made every
+    command reply "Reply to a user's message first".  The correct
+    method is ``get_input_sender()``.
+    """
     reply = await event.get_reply_message()
     if not reply:
         return None, None
     try:
-        target = await reply.get_input_entity()
+        target = await reply.get_input_sender()
     except Exception:
         return None, reply
     return target, reply
@@ -516,3 +522,16 @@ def register(client):
         )
     except Exception:
         pass
+COMMANDS = {
+    "description": "User Info & Lookup",
+    "commands": [
+        (".id", "quick user card (reply)"),
+        (".info", "detailed user card (reply)"),
+        (".sg / .namehistory", "name history via SangMata"),
+        (".common", "common chats (reply)"),
+        (".pfp / .pp", "send profile photo (reply)"),
+        (".uname", "just the username (reply)"),
+        (".dc", "user's data-centre (reply)"),
+        (".me", "full info about yourself"),
+    ],
+}

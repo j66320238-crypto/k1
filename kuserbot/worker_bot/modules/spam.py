@@ -221,7 +221,7 @@ def register(client):
 
     # ── .spam  (1 s delay) ───────────────────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.spam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.spam(?:\s|$)"))
     @client.flood_safe
     async def spam_handler(event):
         args = event.raw_text[len(".spam"):].strip()
@@ -240,7 +240,7 @@ def register(client):
 
     # ── .uspam  (no delay) ───────────────────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.uspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.uspam(?:\s|$)"))
     @client.flood_safe
     async def uspam_handler(event):
         args = event.raw_text[len(".uspam"):].strip()
@@ -259,7 +259,7 @@ def register(client):
 
     # ── .fastspam  (0.1 s delay) ─────────────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.fastspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.fastspam(?:\s|$)"))
     @client.flood_safe
     async def fastspam_handler(event):
         args = event.raw_text[len(".fastspam"):].strip()
@@ -278,7 +278,7 @@ def register(client):
 
     # ── .delayspam  (custom delay) ───────────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.delayspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.delayspam(?:\s|$)"))
     @client.flood_safe
     async def delayspam_handler(event):
         args = event.raw_text[len(".delayspam"):].strip()
@@ -310,7 +310,7 @@ def register(client):
 
     # ── .dmspam  (DM spam) ───────────────────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.dmspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.dmspam(?:\s|$)"))
     @client.flood_safe
     async def dmspam_handler(event):
         args = event.raw_text[len(".dmspam"):].strip()
@@ -344,7 +344,7 @@ def register(client):
 
     # ── .mspam  (reply to a sticker) ─────────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.mspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.mspam(?:\s|$)"))
     @client.flood_safe
     async def mspam_handler(event):
         args = event.raw_text[len(".mspam"):].strip()
@@ -382,7 +382,7 @@ def register(client):
 
     # ── .gspam  (globally saved sticker) ─────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.gspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.gspam(?:\s|$)"))
     @client.flood_safe
     async def gspam_handler(event):
         args = event.raw_text[len(".gspam"):].strip()
@@ -414,7 +414,7 @@ def register(client):
 
     # ── .setgspam  (save a sticker) ──────────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.setgspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.setgspam(?:\s|$)"))
     @client.flood_safe
     async def setgspam_handler(event):
         reply = await event.get_reply_message()
@@ -437,7 +437,7 @@ def register(client):
 
     # ── .listgspam  (view saved sticker) ─────────────────────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.listgspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.listgspam(?:\s|$)"))
     @client.flood_safe
     async def listgspam_handler(event):
         sticker_input = _load_gspam()
@@ -455,14 +455,28 @@ def register(client):
 
     # ── .clrgspam  /  .delgspam  (delete saved sticker) ──────────────────
 
-    @client.on(events.NewMessage(pattern=r"^\.clrgspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.clrgspam(?:\s|$)"))
     @client.flood_safe
     async def clrgspam_handler(event):
         _clear_gspam()
         await event.reply("🗑️ Global sticker has been **cleared**.")
 
-    @client.on(events.NewMessage(pattern=r"^\.delgspam(?:\s|$)"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.delgspam(?:\s|$)"))
     @client.flood_safe
     async def delgspam_handler(event):
         _clear_gspam()
         await event.reply("🗑️ Global sticker has been **deleted**.")
+COMMANDS = {
+    "description": "Spam & Stickers",
+    "commands": [
+        (".spam <n> <text>", "spam text (1s delay)"),
+        (".fastspam <n> <text>", "spam fast (0.1s)"),
+        (".uspam <n> <text>", "ultra spam (no delay)"),
+        (".delayspam <n> <sec> <text>", "custom delay"),
+        (".dmspam <n> @user <text>", "spam user DM"),
+        (".mspam <n>", "spam replied sticker"),
+        (".setgspam", "save global sticker"),
+        (".gspam <n>", "spam saved sticker"),
+        (".listgspam / .clrgspam", "view/clear saved sticker"),
+    ],
+}

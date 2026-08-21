@@ -1,0 +1,3 @@
+# Worker Userbot — installed on remote SSH servers
+telethon>=1.34
+tgcrypto>=1.2.5
