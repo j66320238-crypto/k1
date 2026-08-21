@@ -16,6 +16,7 @@ from aiogram.types import Message
 
 from config import SPECIAL_ADMIN_ID, API_ID, API_HASH, SERVERS_JSON_PATH
 from database import db
+from encryption import DataEncryptor
 from utils.ssh_connector import SSHManager
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,10 @@ async def deploy_userbot_handler(message: Message, command: CommandObject):
     if not session_string:
         return await message.reply("❌ User does not have an active session string.")
 
+    # NEW (v3.1): sessions are stored encrypted — decrypt for deployment,
+    # falling back to the raw value for legacy (pre-encryption) rows.
+    session_string = DataEncryptor.decrypt(session_string) or session_string
+
     # 2. Fetch Available SSH Servers
     servers = _load_servers()
     if not servers:
@@ -124,6 +129,88 @@ async def deploy_userbot_handler(message: Message, command: CommandObject):
     except Exception as e:
         logger.exception("Deployment failed")
         await status_msg.edit_text(f"❌ Deployment crashed:\n<code>{str(e)[:1000]}</code>")
+    finally:
+        await ssh.close()
+
+
+# ────────────────────────────────────────────────
+# Command: /servers — list all SSH servers
+# ────────────────────────────────────────────────
+@router.message(Command("servers"))
+async def list_servers_handler(message: Message):
+    """List every configured SSH server."""
+    servers = _load_servers()
+    if not servers:
+        return await message.reply(
+            "📭 No SSH servers configured.\nUse the SSH Dashboard (/ssh) to add one."
+        )
+
+    lines = ["🖥 <b>Configured SSH Servers</b>\n"]
+    for i, srv in enumerate(servers, start=1):
+        host = srv.get("host", "?")
+        user = srv.get("username", "?")
+        port = srv.get("port", 22)
+        lines.append(
+            f"<b>{i}.</b> <code>{user}@{host}:{port}</code>"
+        )
+    lines.append(f"\n📦 Total: <b>{len(servers)}</b>")
+    await message.reply("\n".join(lines))
+
+
+# ────────────────────────────────────────────────
+# Command: /logs <host> — tail the userbot log
+# ────────────────────────────────────────────────
+@router.message(Command("logs"))
+async def logs_handler(message: Message, command: CommandObject):
+    """Tail the last lines of the userbot log on a server.
+    Usage: /logs <host> [lines]
+    """
+    args = (command.args or "").strip().split()
+    if not args:
+        return await message.reply(
+            "❌ Usage: <code>/logs &lt;host&gt; [lines]</code>"
+        )
+
+    host = args[0]
+    lines_n = 30
+    if len(args) > 1:
+        try:
+            lines_n = max(1, min(int(args[1]), 100))
+        except ValueError:
+            pass
+
+    server = next(
+        (s for s in _load_servers() if s.get("host") == host), None
+    )
+    if not server:
+        return await message.reply(f"❌ Server <code>{host}</code> not found.")
+
+    status = await message.reply(f"📂 Reading log from <code>{host}</code>…")
+
+    ssh = SSHManager(
+        server.get("host"), server.get("username"),
+        server.get("password"), server.get("port", 22),
+    )
+    try:
+        if not await ssh.connect():
+            return await status.edit_text(f"❌ SSH connection failed for <code>{host}</code>.")
+
+        log_text = await ssh.tail_log(lines_n)
+        if not log_text or not log_text.strip():
+            return await status.edit_text(
+                f"📭 <code>{host}</code> has no <code>worker_bot/userbot.log</code> yet — "
+                f"the userbot has probably never been started there."
+            )
+
+        # Keep Telegram happy: cap length, escape HTML via <pre>
+        snippet = log_text[-3500:]
+        await status.edit_text(
+            f"📂 <b>Log — {host}</b> (last {lines_n} lines)\n"
+            f"<pre>{snippet}</pre>"
+        )
+    except Exception as e:
+        logger.exception("Log fetch failed")
+        await status.edit_text(f"❌ Failed: <code>{str(e)[:500]}</code>")
     finally:
         await ssh.close()
 

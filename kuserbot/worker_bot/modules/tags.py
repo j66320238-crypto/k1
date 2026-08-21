@@ -5,7 +5,7 @@ Mass-tagging module for the Telegram Userbot.
 Provides:
     .tagall <text>   - Tag every member of the current chat in batches of 5.
     .onetag <text>   - Tag every member of the current chat strictly one-by-one.
-    .admins <text>   - Tag every admin of the current chat (single message).
+    .tagadmins <text> - Tag every admin of the current chat (single message).
     .cancel / .tagstop - Cancel any running tagging task.
 
 This module is loaded dynamically by `userbot.py` via the `register(client)`
@@ -98,7 +98,7 @@ def register(client):
         finally:
             client.stop_processes.pop(_key(event.id), None)
 
-    @client.on(events.NewMessage(pattern=r"^\.tagall(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.tagall(?:\s+(.*))?$"))
     @client.flood_safe
     async def tagall_handler(event):
         if event.is_private:
@@ -151,7 +151,7 @@ def register(client):
         finally:
             client.stop_processes.pop(_key(event.id), None)
 
-    @client.on(events.NewMessage(pattern=r"^\.onetag(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.onetag(?:\s+(.*))?$"))
     @client.flood_safe
     async def onetag_handler(event):
         if event.is_private:
@@ -173,7 +173,7 @@ def register(client):
         )
 
     # ------------------------------------------------------------------ #
-    #  .admins
+    #  .tagadmins
     # ------------------------------------------------------------------ #
     async def _admins_task(event, text: str):
         try:
@@ -197,11 +197,11 @@ def register(client):
         finally:
             client.stop_processes.pop(_key(event.id), None)
 
-    @client.on(events.NewMessage(pattern=r"^\.admins(?:\s+(.*))?$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.tagadmins(?:\s+(.*))?$"))
     @client.flood_safe
     async def admins_handler(event):
         if event.is_private:
-            await event.reply("⚠️ Use `.admins` inside a group or channel.")
+            await event.reply("⚠️ Use `.tagadmins` inside a group or channel.")
             return
         if _key(event.id) in client.stop_processes:
             await event.reply("⚠️ A tagging task is already running here.")
@@ -216,7 +216,7 @@ def register(client):
     # ------------------------------------------------------------------ #
     #  .cancel / .tagstop
     # ------------------------------------------------------------------ #
-    @client.on(events.NewMessage(pattern=r"^\.tagstop$|^\.cancel$"))
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^\.tagstop$|^\.cancel$"))
     @client.flood_safe
     async def cancel_handler(event):
         keys = [k for k in list(client.stop_processes.keys())
@@ -240,6 +240,15 @@ def register(client):
     # ------------------------------------------------------------------ #
     client._tg_modules = getattr(client, "_tg_modules", {})
     client._tg_modules["tags"] = {
-        "commands": [".tagall", ".onetag", ".admins", ".cancel", ".tagstop"],
+        "commands": [".tagall", ".onetag", ".tagadmins", ".cancel", ".tagstop"],
         "version": "1.0",
     }
+COMMANDS = {
+    "description": "Mass Tagging",
+    "commands": [
+        (".tagall [text]", "tag everyone in batches"),
+        (".onetag [text]", "tag everyone one-by-one"),
+        (".tagadmins [text]", "tag all admins"),
+        (".cancel / .tagstop", "stop tagging tasks"),
+    ],
+}

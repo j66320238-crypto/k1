@@ -170,17 +170,15 @@ def register(client):
                 parse_mode="html",
             )
             return
+        # FIX: Message objects have no get_input_entity() in Telethon.
         try:
-            target_entity = await target.get_input_entity()
+            target_entity = await target.get_input_sender()
         except Exception:
-            try:
-                target_entity = await target.get_input_sender()
-            except Exception:
-                await event.edit(
-                    "❌ <b>Could not resolve target user.</b>",
-                    parse_mode="html",
-                )
-                return
+            await event.edit(
+                "❌ <b>Could not resolve target user.</b>",
+                parse_mode="html",
+            )
+            return
 
         # ── Resolve chat (avoid Peer ID errors) ──────────────────────────
         try:
@@ -267,17 +265,15 @@ def register(client):
                 parse_mode="html",
             )
             return
+        # FIX: Message objects have no get_input_entity() in Telethon.
         try:
-            target_entity = await target.get_input_entity()
+            target_entity = await target.get_input_sender()
         except Exception:
-            try:
-                target_entity = await target.get_input_sender()
-            except Exception:
-                await event.edit(
-                    "❌ <b>Could not resolve target user.</b>",
-                    parse_mode="html",
-                )
-                return
+            await event.edit(
+                "❌ <b>Could not resolve target user.</b>",
+                parse_mode="html",
+            )
+            return
 
         try:
             user_obj = await client.get_entity(target_entity)
@@ -331,17 +327,15 @@ def register(client):
                 )
             return
 
+        # FIX: Message objects have no get_input_entity() in Telethon.
         try:
-            target_entity = await target.get_input_entity()
+            target_entity = await target.get_input_sender()
         except Exception:
-            try:
-                target_entity = await target.get_input_sender()
-            except Exception:
-                await event.edit(
-                    "❌ <b>Could not resolve target user.</b>",
-                    parse_mode="html",
-                )
-                return
+            await event.edit(
+                "❌ <b>Could not resolve target user.</b>",
+                parse_mode="html",
+            )
+            return
 
         try:
             user_obj = await client.get_entity(target_entity)
@@ -402,3 +396,14 @@ def register(client):
                 pass
         except Exception:
             pass
+COMMANDS = {
+    "description": "Raid Tools",
+    "commands": [
+        (".setraid <text>", "save raid text"),
+        (".listraid", "view saved raid text"),
+        (".delraid / .clrraid", "delete raid text"),
+        (".raid [n]", "raid replied user"),
+        (".drraid", "auto-reply raid on user"),
+        (".stopraid", "stop reply-raids"),
+    ],
+}

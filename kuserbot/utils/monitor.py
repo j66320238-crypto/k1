@@ -21,7 +21,8 @@ from typing import Any, Mapping, Optional, Sequence
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 
-import database as db
+from database import db  # FIX: was `import database as db` — that bound the
+                         # MODULE, so db.get_all_users() raised AttributeError.
 from config import SPECIAL_ADMIN_ID
 
 logger = logging.getLogger(__name__)

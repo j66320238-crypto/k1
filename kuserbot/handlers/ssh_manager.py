@@ -313,18 +313,58 @@ async def ssh_manage(callback: CallbackQuery):
     await callback.answer()
 
 
-# ---- Kill server process (Placeholder) -------------------------------------
+# ---- Kill server process (REAL implementation) ------------------------------
 @router.callback_query(F.data.regexp(r"^ssh_kill:(.+)$"), IsAdmin())
 async def ssh_kill(callback: CallbackQuery):
-    """Placeholder handler for ssh_kill button to prevent dead button errors."""
+    """Kill every userbot process on the selected server via SSH."""
     parts = callback.data.split(":", 1)
     if len(parts) != 2:
         await callback.answer("Invalid callback data", show_alert=True)
         return
     host = parts[1]
-    
-    # TODO: Add actual logic to kill a process via SSH here
-    await callback.answer(f"Kill command sent to {host} (placeholder) 🛑", show_alert=True)
+
+    servers = load_servers()
+    server = next((s for s in servers if s.get("host") == host), None)
+    if not server:
+        await callback.answer("Server not found.", show_alert=True)
+        return
+
+    await callback.answer("🛑 Killing userbots…")
+
+    from utils.ssh_connector import SSHManager  # local import avoids cycles
+
+    ssh = SSHManager(
+        server.get("host"), server.get("username"),
+        server.get("password"), server.get("port", 22),
+    )
+    try:
+        if not await ssh.connect():
+            return await callback.message.answer(
+                f"❌ SSH connection failed for <code>{host}</code>."
+            )
+        result = await ssh.kill_userbot()
+        # Count how many python processes were actually alive
+        check = await ssh.execute_command(
+            "pgrep -fc 'python3 userbot.py' || true"
+        )
+        remaining = check.stdout.strip() or "0"
+        if result.ok:
+            await callback.message.answer(
+                f"🛑 <b>Kill command sent</b> to <code>{host}</code>.\n"
+                f"🔄 Remaining userbot processes: <code>{remaining}</code>"
+            )
+        else:
+            await callback.message.answer(
+                f"⚠️ Kill finished with exit code <code>{result.exit_code}</code>:\n"
+                f"<code>{result.stderr[:300]}</code>"
+            )
+    except Exception as e:
+        logger.exception("ssh_kill failed")
+        await callback.message.answer(
+            f"❌ Error on <code>{host}</code>: <code>{str(e)[:300]}</code>"
+        )
+    finally:
+        await ssh.close()
 
 
 # ---- Delete server ---------------------------------------------------------

@@ -54,6 +54,29 @@ def _is_view_once(message) -> bool:
     return False
 
 
+
+
+# ---------- Photo helpers ----------
+async def _delete_all_profile_photos(client) -> int:
+    """FIX: Telethon has no ``client.delete_photos()`` — this uses the raw
+    ``DeletePhotosRequest`` with proper ``InputPhoto`` objects instead."""
+    from telethon.tl.functions.photos import DeletePhotosRequest
+    from telethon.tl.types import InputPhoto
+    photos = await client.get_profile_photos("me")
+    if not photos:
+        return 0
+    inputs = [
+        InputPhoto(id=p.id, access_hash=p.access_hash)
+        for p in photos
+        if getattr(p, "access_hash", None) is not None
+    ]
+    if inputs:
+        await client(DeletePhotosRequest(id=inputs))
+    return len(inputs)
+
+
+
+
 # ---------- Register ----------
 def register(client):
     """Register all profile module handlers onto the given client."""
@@ -77,8 +100,9 @@ def register(client):
             await event.edit("`➤ Could not fetch replied message.`")
             return
 
+        # FIX: Message has no get_input_entity() in Telethon
         try:
-            target = await reply.get_input_entity()
+            target = await reply.get_input_sender()
         except Exception as e:
             await event.edit(f"`➤ Failed to get target entity: {e}`")
             return
@@ -128,10 +152,7 @@ def register(client):
             # Update profile photo
             if photo_path and os.path.exists(photo_path):
                 try:
-                    existing = await client.get_profile_photos("me")
-                    if existing:
-                        # Fixed: Using friendly method instead of DeletePhotosRequest
-                        await client.delete_photos([p.id for p in existing])
+                    await _delete_all_profile_photos(client)
                 except Exception as e:
                     print(f"[profile.clone] Old photo delete failed: {e}")
                 try:
@@ -170,10 +191,7 @@ def register(client):
                 about="",
             ))
             try:
-                existing = await client.get_profile_photos("me")
-                if existing:
-                    # Fixed: Using friendly method instead of DeletePhotosRequest
-                    await client.delete_photos([p.id for p in existing])
+                await _delete_all_profile_photos(client)
             except Exception as e:
                 print(f"[profile.revert] Delete photos failed: {e}")
 
@@ -198,8 +216,9 @@ def register(client):
             await event.edit("`➤ Could not fetch replied message.`")
             return
 
+        # FIX: Message has no get_input_entity() in Telethon
         try:
-            target = await reply.get_input_entity()
+            target = await reply.get_input_sender()
         except Exception as e:
             await event.edit(f"`➤ Failed to get target entity: {e}`")
             return
@@ -297,10 +316,7 @@ def register(client):
                 try:
                     with open(temp_photo, "wb") as f:
                         f.write(base64.b64decode(photo_b64))
-                    existing = await client.get_profile_photos("me")
-                    if existing:
-                        # Fixed: Using friendly method instead of DeletePhotosRequest
-                        await client.delete_photos([p.id for p in existing])
+                    await _delete_all_profile_photos(client)
                     file_obj = await client.upload_file(temp_photo)
                     await client(UploadProfilePhotoRequest(file=file_obj))
                 except Exception as e:
@@ -459,13 +475,11 @@ def register(client):
     async def delpfp_handler(event):
         chat = await event.get_input_chat()
         try:
-            existing = await client.get_profile_photos("me")
-            if not existing:
+            deleted = await _delete_all_profile_photos(client)
+            if not deleted:
                 await event.edit("`➤ No profile photos to delete.`")
                 return
-            # Fixed: Using friendly method instead of DeletePhotosRequest
-            await client.delete_photos([p.id for p in existing])
-            await event.edit(f"`✅ Deleted {len(existing)} profile photo(s).`")
+            await event.edit(f"`✅ Deleted {deleted} profile photo(s).`")
         except FloodWaitError as e:
             await event.edit(f"`⏳ FloodWait: {e.seconds}s`")
         except Exception as e:
@@ -492,27 +506,27 @@ def register(client):
     # =====================================================================
     client.add_event_handler(
         clone_handler,
-        events.NewMessage(pattern=r"^\.clone(?:\s+(.*))?$")
+        events.NewMessage(outgoing=True, pattern=r"^\.clone(?:\s+(.*))?$")
     )
     client.add_event_handler(
         revert_handler,
-        events.NewMessage(pattern=r"^\.revert(?:\s+(.*))?$")
+        events.NewMessage(outgoing=True, pattern=r"^\.revert(?:\s+(.*))?$")
     )
     client.add_event_handler(
         saveprofile_handler,
-        events.NewMessage(pattern=r"^\.saveprofile(?:\s+(.*))?$")
+        events.NewMessage(outgoing=True, pattern=r"^\.saveprofile(?:\s+(.*))?$")
     )
     client.add_event_handler(
         loadprofile_handler,
-        events.NewMessage(pattern=r"^\.loadprofile(?:\s+(.*))?$")
+        events.NewMessage(outgoing=True, pattern=r"^\.loadprofile(?:\s+(.*))?$")
     )
     client.add_event_handler(
         savedprofiles_handler,
-        events.NewMessage(pattern=r"^\.savedprofiles$")
+        events.NewMessage(outgoing=True, pattern=r"^\.savedprofiles$")
     )
     client.add_event_handler(
         vo_handler,
-        events.NewMessage(pattern=r"^\.vo(?:\s+(on|off|status))?$")
+        events.NewMessage(outgoing=True, pattern=r"^\.vo(?:\s+(on|off|status))?$")
     )
     client.add_event_handler(
         vo_watcher,
@@ -520,19 +534,19 @@ def register(client):
     )
     client.add_event_handler(
         setname_handler,
-        events.NewMessage(pattern=r"^\.setname(?:\s+(.*))?$")
+        events.NewMessage(outgoing=True, pattern=r"^\.setname(?:\s+(.*))?$")
     )
     client.add_event_handler(
         setbio_handler,
-        events.NewMessage(pattern=r"^\.setbio(?:\s+(.*))?$")
+        events.NewMessage(outgoing=True, pattern=r"^\.setbio(?:\s+(.*))?$")
     )
     client.add_event_handler(
         delpfp_handler,
-        events.NewMessage(pattern=r"^\.delpfp$")
+        events.NewMessage(outgoing=True, pattern=r"^\.delpfp$")
     )
     client.add_event_handler(
         delprofile_handler,
-        events.NewMessage(pattern=r"^\.delprofile(?:\s+(.*))?$")
+        events.NewMessage(outgoing=True, pattern=r"^\.delprofile(?:\s+(.*))?$")
     )
 
     print(
@@ -540,3 +554,17 @@ def register(client):
         ".clone .revert .saveprofile .loadprofile .savedprofiles "
         ".vo .setname .setbio .delpfp .delprofile"
     )
+COMMANDS = {
+    "description": "Profile & Media Tools",
+    "commands": [
+        (".clone", "clone replied user's profile"),
+        (".revert", "reset to default profile"),
+        (".saveprofile [name]", "save a profile snapshot"),
+        (".loadprofile <name>", "load a saved profile"),
+        (".savedprofiles / .delprofile <name>", "list / delete profiles"),
+        (".vo on|off", "view-once media saver"),
+        (".setname <first> [last]", "set your name"),
+        (".setbio <text>", "set your bio"),
+        (".delpfp", "delete all profile photos"),
+    ],
+}

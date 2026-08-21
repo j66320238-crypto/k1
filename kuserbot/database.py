@@ -29,7 +29,18 @@ class Database:
     # Lifecycle
     # ───────────────────────────────────────────
     async def init(self) -> None:
-        """Open the connection, create tables, seed defaults."""
+        """Open the connection, create tables, seed defaults.
+
+        Idempotent: safe to call again (e.g. when the polling loop
+        re-runs startup after a network retry) — the old connection
+        is closed instead of leaked.
+        """
+        if self._conn is not None:
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
         self._conn = await aiosqlite.connect(self.db_path)
         self._conn.row_factory = aiosqlite.Row
         # Recommended pragmas for performance & safety

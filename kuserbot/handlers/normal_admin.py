@@ -61,6 +61,43 @@ def _extract_user_id(user: Any) -> Optional[int]:
 
 
 # ────────────────────────────────────────────────
+# /adminhelp — list every admin command
+# ────────────────────────────────────────────────
+@router.message(Command("adminhelp"))
+async def cmd_adminhelp(message: Message):
+    """NEW (v3.1): single place listing all admin commands."""
+    text = (
+        "🛠 <b>Admin Commands</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🛠 <b>Panel</b>\n"
+        "• <code>/admin</code> — admin dashboard (buttons!)\n\n"
+        "📢 <b>Broadcast & Stats</b>\n"
+        "• <code>/broadcast &lt;msg&gt;</code> — text broadcast\n"
+        "• <code>/broadcast</code> (reply) — copy broadcast\n"
+        "• <code>/stats</code> — bot statistics\n\n"
+        "📑 <b>Help Menu</b>\n"
+        "• <code>/addhelp</code> — add a help button\n"
+        "• <code>/delhelp &lt;name&gt;</code> — delete one\n"
+        "• <code>/listhelp</code> — list all\n\n"
+        "⚙️ <b>Settings</b>\n"
+        "• <code>/setsupport &lt;link&gt;</code>\n"
+        "• <code>/setowner &lt;@user&gt;</code>\n"
+        "• <code>/setfjoin &lt;link&gt;</code> / <code>/delfjoin</code>\n"
+        "• <code>/setwelcome &lt;text&gt;</code>\n\n"
+        "🖥 <b>Servers & Deploy</b>\n"
+        "• <code>/ssh</code> — SSH server dashboard\n"
+        "• <code>/servers</code> — list servers\n"
+        "• <code>/deploy &lt;user_id&gt;</code> — deploy userbot\n"
+        "• <code>/syncssh</code> — sync files to all servers\n"
+        "• <code>/logs &lt;host&gt; [lines]</code> — tail userbot log\n\n"
+        "🔐 <b>Special Admin</b>\n"
+        "• <code>/specialhelp</code> — owner-only commands\n"
+        "━━━━━━━━━━━━━━━━━━━━━━"
+    )
+    await message.reply(text)
+
+
+# ────────────────────────────────────────────────
 # /cancel — universal FSM cancellation
 # ────────────────────────────────────────────────
 @router.message(Command("cancel"), StateFilter("*"))

@@ -1,0 +1,40 @@
+# ── Secrets ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.python-version
+
+# ── Runtime data (userbot & master) ─────────────────────
+*.db
+*.db-shm
+*.db-wal
+bot.log
+userbot.log
+nohup.out
+servers.json
+afk_data.json
+antipm_data.json
+gspam_data.json
+profiles_data.json
+raid_data.json
+modules/afk_data.json
+modules/antipm_data.json
+modules/gspam_data.json
+modules/profiles_data.json
+
+# ── Sessions (NEVER commit these!) ──────────────────────
+*.session
+*.session-journal
+
+# ── Editors / OS ────────────────────────────────────────
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

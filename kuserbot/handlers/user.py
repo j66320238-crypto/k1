@@ -22,10 +22,28 @@ from telethon.errors import (
     PhoneNumberInvalidError,
 )
 
-# Cleaned imports
-from keyboards.start_kb import *
+# Cleaned imports (FIX: explicit imports instead of `import *`)
+from keyboards.start_kb import (
+    get_start_kb,
+    get_force_join_kb,
+    get_about_kb,
+    get_owner_kb,
+    get_guide_kb,
+    get_support_kb,
+    get_help_kb,
+    get_help_info_kb,
+)
+from keyboards.otp_kb import (
+    get_otp_kb,
+    get_empty_otp_kb,
+    OTP_DIGIT_PREFIX,
+    OTP_DELETE_CB,
+    OTP_SUBMIT_CB,
+    OTP_CANCEL_CB,
+)
 from database import db
 from config import SPECIAL_ADMIN_ID, ADMIN_IDS, API_ID, API_HASH
+from encryption import DataEncryptor
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -454,37 +472,43 @@ async def process_phone(message: Message, state: FSMContext):
 
     try:
         await client.send_code_request(phone_number)
-        await state.update_data(phone=phone_number, client_session=client.session.save())
+        await state.update_data(phone=phone_number, client_session=client.session.save(), otp_digits="")
         await state.set_state(HostStates.waiting_for_otp)
         await message.reply(
             "✅ OTP sent to your Telegram app!\n\n"
             "Please send the OTP code now (e.g., 12345).\n\n"
-            "❌ Send /cancel to abort."
+            "❌ Send /cancel to abort.",
+            reply_markup=get_otp_kb(),  # NEW: tap-to-type OTP numpad
         )
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)}")
+    finally:
+        # FIX: the client was never disconnected on the success path,
+        # leaking a socket + event loop per hosting attempt.
         await client.disconnect()
 
 
 # ════════════════════════════════════════════════════════════════════
-#  HOST FLOW — OTP HANDLER
+#  HOST FLOW — OTP HANDLER (shared by text input & numpad)
 # ════════════════════════════════════════════════════════════════════
 
-@router.message(HostStates.waiting_for_otp, F.text)
-async def process_otp(message: Message, state: FSMContext) -> None:
-    otp_code = (message.text or "").strip()
+async def _verify_otp_and_store(reply_target, user_id: int, state: FSMContext, otp_code: str) -> bool:
+    """Shared OTP verification for BOTH input paths (text + numpad).
+
+    Returns True on success (state cleared), False otherwise.
+    """
     data = await state.get_data()
     phone = data.get("phone")
     session_str = data.get("client_session")
 
     if not session_str or not phone:
-        await message.reply(
+        await reply_target.reply(
             "⚠️ Session expired. Please start the host flow again via "
             "<b>🖥 Host</b>.",
             parse_mode="HTML",
         )
         await state.clear()
-        return
+        return False
 
     # Reconnect using saved string session
     client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
@@ -496,19 +520,21 @@ async def process_otp(message: Message, state: FSMContext) -> None:
         # ── Login Successful! ─────────────────────────────
         string_session = client.session.save()
 
-        # Save to Database (Encrypt it later if needed)
-        await db.set_session(message.from_user.id, string_session, phone)
+        # NEW (v3.1): encrypt the session string at rest (AES/Fernet)
+        stored_session = DataEncryptor.encrypt(string_session)
+        await db.set_session(user_id, stored_session, phone)
 
         await state.clear()
-        await message.reply(
+        await reply_target.reply(
             "✅ <b>Login Successful!</b>\n\n"
             "Your account has been securely hosted. You can now use the "
             "userbot commands.\n\n"
             "Use /start to return to the main menu.",
             parse_mode="HTML",
         )
+        return True
     except PhoneCodeInvalidError:
-        await message.reply(
+        await reply_target.reply(
             "❌ <b>Invalid OTP.</b> Please send the correct OTP or send "
             "<code>/cancel</code>.",
             parse_mode="HTML",
@@ -517,22 +543,109 @@ async def process_otp(message: Message, state: FSMContext) -> None:
         # 2FA is enabled — keep the same session for password step
         await state.update_data(client_session=client.session.save())
         await state.set_state(HostStates.waiting_for_password)
-        await message.reply(
+        await reply_target.reply(
             "🔒 <b>Two-Step Verification (2FA) Detected</b>\n\n"
             "Please send your password now.\n\n"
             "❌ Send <code>/cancel</code> to abort.",
             parse_mode="HTML",
         )
     except Exception as e:
-        logger.exception("Telethon sign_in (OTP) failed for %s",
-                         message.from_user.id)
-        await message.reply(f"❌ <b>Error:</b> <code>{str(e)}</code>",
-                            parse_mode="HTML")
+        logger.exception("Telethon sign_in (OTP) failed for %s", user_id)
+        await reply_target.reply(
+            f"❌ <b>Error:</b> <code>{str(e)}</code>", parse_mode="HTML"
+        )
     finally:
         # Disconnect only when not entering 2FA flow
         current_state = await state.get_state()
         if current_state != HostStates.waiting_for_password:
             await client.disconnect()
+    return False
+
+
+@router.message(HostStates.waiting_for_otp, F.text)
+async def process_otp(message: Message, state: FSMContext) -> None:
+    otp_code = (message.text or "").strip()
+    await _verify_otp_and_store(message, message.from_user.id, state, otp_code)
+
+
+# ════════════════════════════════════════════════════════════════════
+#  HOST FLOW — OTP NUMPAD CALLBACKS (NEW v3.1)
+#  Calculator-style keypad from keyboards/otp_kb.py — tap digits,
+#  delete, or submit. Text input still works alongside.
+# ════════════════════════════════════════════════════════════════════
+
+def _render_otp_text(digits: str) -> str:
+    if digits:
+        masked = " ".join("▪" * int(d) for d in digits)
+    else:
+        masked = "▫ ▫ ▫ ▫ ▫ ▫"
+    return (
+        "✅ OTP sent to your Telegram app!\n\n"
+        f"🔢 <b>Code:</b> <code>{masked}</code>\n\n"
+        "Tap the digits below (or simply type the code).\n"
+        "❌ Send <code>/cancel</code> to abort."
+    )
+
+
+@router.callback_query(HostStates.waiting_for_otp, F.data.startswith(OTP_DIGIT_PREFIX))
+async def cb_otp_digit(callback: CallbackQuery, state: FSMContext):
+    digit = callback.data.split(":", 1)[1]
+    if not digit.isdigit():
+        return await callback.answer()
+    data = await state.get_data()
+    digits = (data.get("otp_digits") or "") + digit
+    if len(digits) > 8:
+        return await callback.answer("⚠️ Too many digits!")
+    await state.update_data(otp_digits=digits)
+    try:
+        await callback.message.edit_text(
+            _render_otp_text(digits), reply_markup=get_otp_kb(), parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass  # identical text — ignore
+    await callback.answer()
+
+
+@router.callback_query(HostStates.waiting_for_otp, F.data == OTP_DELETE_CB)
+async def cb_otp_delete(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    digits = (data.get("otp_digits") or "")[:-1]
+    await state.update_data(otp_digits=digits)
+    try:
+        await callback.message.edit_text(
+            _render_otp_text(digits), reply_markup=get_otp_kb(), parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(HostStates.waiting_for_otp, F.data == OTP_SUBMIT_CB)
+async def cb_otp_submit(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    digits = data.get("otp_digits") or ""
+    if len(digits) < 4:
+        return await callback.answer("⚠️ Enter the full code first!", show_alert=True)
+
+    await callback.answer("⏳ Verifying…")
+    try:
+        await callback.message.edit_text(
+            _render_otp_text(digits), reply_markup=get_empty_otp_kb(), parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
+
+    await _verify_otp_and_store(callback.message, callback.from_user.id, state, digits)
+
+
+@router.callback_query(HostStates.waiting_for_otp, F.data == OTP_CANCEL_CB)
+async def cb_otp_cancel(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    try:
+        await callback.message.edit_text("❌ <b>Operation cancelled.</b>", parse_mode="HTML")
+    except TelegramBadRequest:
+        pass
+    await callback.answer("Cancelled")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -562,8 +675,9 @@ async def process_password(message: Message, state: FSMContext) -> None:
         await client.sign_in(password=password)
         string_session = client.session.save()
 
-        # Save to Database
-        await db.set_session(message.from_user.id, string_session, phone)
+        # Save to Database (encrypted at rest)
+        stored_session = DataEncryptor.encrypt(string_session)
+        await db.set_session(message.from_user.id, stored_session, phone)
 
         await state.clear()
         await message.reply(
